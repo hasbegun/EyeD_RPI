@@ -62,12 +62,12 @@ bool m_debug = false;
 // Include OpenCV's C++ Interface
 #include "opencv2/opencv.hpp"
 
-// Include the rest of our code!
-#include "detectObject.h"       // Easily detect faces or eyes (using LBP or Haar Cascades).
-#include "preprocessFace.h"     // Easily preprocess face images, for face recognition.
-#include "recognition.h"     // Train the face recognition system and recognize a person from an image.
+// Include the rest of our code
+#include "face/detectObject.h"       // Easily detect faces or eyes (using LBP or Haar Cascades).
+#include "face/preprocessFace.h"     // Easily preprocess face images, for face recognition.
+#include "face/recognition.h"     // Train the face recognition system and recognize a person from an image.
 
-#include "ImageUtils.h"      // Shervin's handy OpenCV utility functions.
+#include "face/ImageUtils.h"      // Shervin's handy OpenCV utility functions.
 
 using namespace cv;
 using namespace std;
