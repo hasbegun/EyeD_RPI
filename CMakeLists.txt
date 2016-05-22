@@ -7,8 +7,8 @@ set(PROJECT_BASE_PATH ${CMAKE_SOURCE_DIR}/../../)
 
 #OpenCV required
 find_package(OpenCV REQUIRED)
-IF (${OpenCV_VERSION} VERSION_LESS 2.4.11)
-    MESSAGE(FATAL_ERROR "OpenCV version is not compatible: ${OpenCV_VERSION}. EyeD_RPI requires at least OpenCV v2.4.1")
+IF (${OpenCV_VERSION} VERSION_LESS 2.4.0)
+    MESSAGE(FATAL_ERROR "OpenCV version is not compatible: ${OpenCV_VERSION}. EyeD_RPI requires at least OpenCV v2.4.0")
 ENDIF()
 
 #include_directories(${PROJECT_BASE_PATH}BiometricLib/Iris)
@@ -17,7 +17,12 @@ ENDIF()
 
 include_directories(${PROJECT_BASE_PATH}BiometricLib/src)
 
+#set(SOURCE_FILES src)
+#include_directories(${SOURCE_FILES})
+
 set(SOURCE_FILES src/main.cpp
+src/UIComponents.h
+src/UIComponents.cpp
 #        src/detectObject.cpp
 #        src/preprocessFace.cpp
 #        src/recognition.cpp

@@ -1,0 +1,10 @@
+.DS_Store
+.project
+.cproject
+.idea
+.settings
+build
+doc
+bin
+xcode
+eclipse

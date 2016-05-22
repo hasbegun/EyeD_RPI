@@ -69,6 +69,8 @@ bool m_debug = false;
 
 #include "face/ImageUtils.h"      // Shervin's handy OpenCV utility functions.
 
+//#include "UIComponents.h"
+
 using namespace cv;
 using namespace std;
 
@@ -86,6 +88,8 @@ MODES m_mode = MODE_STARTUP;
 int m_selectedPerson = -1;
 int m_numPersons = 0;
 vector<int> m_latestFaces;
+vector<int> m_latestLeftEyes;
+vector<int> m_latestRightEyes;
 
 // Position of GUI buttons:
 Rect m_rcBtnAdd;
@@ -111,7 +115,8 @@ template <typename T> T fromString(string t)
 }
 
 // Load the face and 1 or 2 eye detection XML classifiers.
-void initDetectors(CascadeClassifier &faceCascade, CascadeClassifier &eyeCascade1, CascadeClassifier &eyeCascade2)
+void initDetectors(CascadeClassifier &faceCascade,
+                   CascadeClassifier &eyeCascade1, CascadeClassifier &eyeCascade2)
 {
     // Load the Face Detection cascade classifier xml file.
     try {   // Surround the OpenCV call by a try/catch block so we can give a useful error message!
@@ -119,7 +124,7 @@ void initDetectors(CascadeClassifier &faceCascade, CascadeClassifier &eyeCascade
     } catch (cv::Exception &e) {}
     if ( faceCascade.empty() ) {
         cerr << "ERROR: Could not load Face Detection cascade classifier [" << faceCascadeFilename << "]!" << endl;
-        cerr << "Copy the file from your OpenCV data folder (eg: 'C:\\OpenCV\\data\\lbpcascades') into this WebcamFaceRec folder." << endl;
+        cerr << "Copy the file from your OpenCV data folder (eg: '/usr/local/opencv/share/lbpcascades') into this WebcamFaceRec folder." << endl;
         exit(1);
     }
     cout << "Loaded the Face Detection cascade classifier [" << faceCascadeFilename << "]." << endl;
@@ -130,7 +135,7 @@ void initDetectors(CascadeClassifier &faceCascade, CascadeClassifier &eyeCascade
     } catch (cv::Exception &e) {}
     if ( eyeCascade1.empty() ) {
         cerr << "ERROR: Could not load 1st Eye Detection cascade classifier [" << eyeCascadeFilename1 << "]!" << endl;
-        cerr << "Copy the file from your OpenCV data folder (eg: 'C:\\OpenCV\\data\\haarcascades') into this WebcamFaceRec folder." << endl;
+        cerr << "Copy the file from your OpenCV data folder (eg: '/usr/local/opencv/share/haarcascades') into this WebcamFaceRec folder." << endl;
         exit(1);
     }
     cout << "Loaded the 1st Eye Detection cascade classifier [" << eyeCascadeFilename1 << "]." << endl;
@@ -163,10 +168,12 @@ void initWebcam(VideoCapture &videoCapture, int cameraNumber)
 }
 
 
-// Draw text into an image. Defaults to top-left-justified text, but you can give negative x coords for right-justified text,
-// and/or negative y coords for bottom-justified text.
-// Returns the bounding rect around the drawn text.
-Rect drawString(Mat img, string text, Point coord, Scalar color, float fontScale = 0.6f, int thickness = 1, int fontFace = FONT_HERSHEY_COMPLEX)
+//// Draw text into an image. Defaults to top-left-justified text, but you can give negative x coords for right-justified text,
+//// and/or negative y coords for bottom-justified text.
+//// Returns the bounding rect around the drawn text.
+
+Rect drawString(Mat img, string text, Point coord, Scalar color,
+                float fontScale = 0.6f, int thickness = 1, int fontFace = FONT_HERSHEY_COMPLEX)
 {
     // Get the text size & baseline.
     int baseline=0;
@@ -248,9 +255,14 @@ void onMouse(int event, int x, int y, int, void*)
         if ((m_numPersons == 0) || (m_latestFaces[m_numPersons-1] >= 0)) {
             // Add a new person.
             m_numPersons++;
+
             m_latestFaces.push_back(-1); // Allocate space for an extra person.
+            m_latestLeftEyes.push_back(-1);
+            m_latestRightEyes.push_back(-1);
+            
             cout << "Num Persons: " << m_numPersons << endl;
         }
+        
         // Use the newly added person. Also use the newest person even if that person was empty.
         m_selectedPerson = m_numPersons - 1;
         m_mode = MODE_COLLECT_FACES;
@@ -296,17 +308,24 @@ void onMouse(int event, int x, int y, int, void*)
 
 
 // Main loop that runs forever, until the user hits Escape to quit.
-void recognizeAndTrainUsingWebcam(VideoCapture &videoCapture, CascadeClassifier &faceCascade, CascadeClassifier &eyeCascade1, CascadeClassifier &eyeCascade2)
+void recognizeAndTrainUsingWebcam(VideoCapture &videoCapture, CascadeClassifier &faceCascade,
+                                  CascadeClassifier &eyeCascade1, CascadeClassifier &eyeCascade2)
 {
     Ptr<FaceRecognizer> model;
+    
     vector<Mat> preprocessedFaces;
+    vector<Mat> leftEyes;
+    vector<Mat> rightEyes;
+    
     vector<int> faceLabels;
     Mat old_prepreprocessedFace;
+    Mat leftEye, rightEye;
+    
     double old_time = 0;
 
     // Since we have already initialized everything, lets start in Detection mode.
     m_mode = MODE_DETECTION;
-
+    
     // Run forever, until the user hits Escape to "break" out of this loop.
     while (true) {
 
@@ -327,9 +346,9 @@ void recognizeAndTrainUsingWebcam(VideoCapture &videoCapture, CascadeClassifier 
 
         // Find a face and preprocess it to have a standard size and contrast & brightness.
         Rect faceRect;  // Position of detected face.
-        Rect searchedLeftEye, searchedRightEye; // top-left and top-right regions of the face, where eyes were searched.
-        Point leftEye, rightEye;    // Position of the detected eyes.
-        Mat preprocessedFace = getPreprocessedFace(displayedFrame, faceWidth, faceCascade, eyeCascade1, eyeCascade2, preprocessLeftAndRightSeparately, &faceRect, &leftEye, &rightEye, &searchedLeftEye, &searchedRightEye);
+        Rect leftEyeRect, rightEyeRect; // top-left and top-right regions of the face, where eyes were searched.
+        Point leftEyePnt, rightEyePnt;    // Position of the detected eyes.
+        Mat preprocessedFace = getPreprocessedFace(displayedFrame, faceWidth, faceCascade, eyeCascade1, eyeCascade2, preprocessLeftAndRightSeparately, &faceRect, &leftEyePnt, &rightEyePnt, &leftEyeRect, &rightEyeRect);
 
         bool gotFaceAndEyes = false;
         if (preprocessedFace.data)
@@ -341,11 +360,19 @@ void recognizeAndTrainUsingWebcam(VideoCapture &videoCapture, CascadeClassifier 
 
             // Draw light-blue anti-aliased circles for the 2 eyes.
             Scalar eyeColor = CV_RGB(0,255,255);
-            if (leftEye.x >= 0) {   // Check if the eye was detected
-                circle(displayedFrame, Point(faceRect.x + leftEye.x, faceRect.y + leftEye.y), 6, eyeColor, 1, CV_AA);
+            if (leftEyePnt.x >= 0) {   // Check if the eye was detected
+                circle(displayedFrame, Point(faceRect.x + leftEyePnt.x, faceRect.y + leftEyePnt.y), 6, eyeColor, 1, CV_AA);
+                leftEyeRect.x += faceRect.x;
+                leftEyeRect.y += faceRect.y;
+                rectangle(displayedFrame, leftEyeRect, CV_RGB(200, 255, 0), 2, CV_AA);
+                leftEye = displayedFrame(leftEyeRect);
             }
-            if (rightEye.x >= 0) {   // Check if the eye was detected
-                circle(displayedFrame, Point(faceRect.x + rightEye.x, faceRect.y + rightEye.y), 6, eyeColor, 1, CV_AA);
+            if (rightEyePnt.x >= 0) {   // Check if the eye was detected
+                circle(displayedFrame, Point(faceRect.x + rightEyePnt.x, faceRect.y + rightEyePnt.y), 6, eyeColor, 1, CV_AA);
+                rightEyeRect.x += faceRect.x;
+                rightEyeRect.y += faceRect.y;
+                rectangle(displayedFrame, rightEyeRect, CV_RGB(255, 200, 0), 2, CV_AA);
+                rightEye = displayedFrame(rightEyeRect);
             }
         }
 
@@ -375,11 +402,18 @@ void recognizeAndTrainUsingWebcam(VideoCapture &videoCapture, CascadeClassifier 
                     // Add the face images to the list of detected faces.
                     preprocessedFaces.push_back(preprocessedFace);
                     preprocessedFaces.push_back(mirroredFace);
+                    leftEyes.push_back(leftEye);
+                    rightEyes.push_back(rightEye);
+                    
                     faceLabels.push_back(m_selectedPerson);
-                    faceLabels.push_back(m_selectedPerson);
-
+                    
+                    //faceLabels.push_back(m_selectedPerson);
+                    
                     // Keep a reference to the latest face of each person.
                     m_latestFaces[m_selectedPerson] = preprocessedFaces.size() - 2;  // Point to the non-mirrored face.
+                    m_latestLeftEyes[m_selectedPerson] = leftEyes.size() -2;
+                    m_latestRightEyes[m_selectedPerson] = rightEyes.size() -2;
+                    
                     // Show the number of collected faces. But since we also store mirrored faces, just show how many the user thinks they stored.
                     cout << "Saved face " << (preprocessedFaces.size()/2) << " for person " << m_selectedPerson << endl;
 
@@ -444,8 +478,7 @@ void recognizeAndTrainUsingWebcam(VideoCapture &videoCapture, CascadeClassifier 
                     // Identify who the person is in the preprocessed face image.
                     identity = model->predict(preprocessedFace);
                     outputStr = toString(identity);
-                }
-                else {
+                } else {
                     // Since the confidence is low, assume it is an unknown person.
                     outputStr = "Unknown";
                 }
@@ -497,6 +530,7 @@ void recognizeAndTrainUsingWebcam(VideoCapture &videoCapture, CascadeClassifier 
             help = "Please wait while your " + toString(preprocessedFaces.size()/2) + " faces of " + toString(m_numPersons) + " people builds.";
         else if (m_mode == MODE_RECOGNITION)
             help = "Click people on the right to add more faces to them, or [Add Person] for someone new.";
+
         if (help.length() > 0) {
             // Draw it with a black background and then again with a white foreground.
             // Since BORDER may be 0 and we need a negative position, subtract 2 from the border so it is always negative.
@@ -525,8 +559,28 @@ void recognizeAndTrainUsingWebcam(VideoCapture &videoCapture, CascadeClassifier 
             // Copy the pixels from src to dst.
             srcBGR.copyTo(dstROI);
         }
+
+        // try to display lefteye
+        if (leftEye.data) {
+            Mat srcLeftEyeBGR = Mat(leftEye.size(), CV_8UC3);
+//            cvtColor(leftEye, srcLeftEyeBGR, CV_GRAY2BGR);   // error
+
+            Rect leftEyeRC = Rect(cx + faceWidth, BORDER, leftEyeRect.width, leftEyeRect.height);
+            Mat dstLeftEye = displayedFrame(leftEyeRC);
+            //            srcLeftEyeBGR.copyTo(dstLeftEye);
+            leftEye.copyTo(dstLeftEye);
+            
+        }
+
+//            Rect rightEyeRC = Rect(cx + faceWidth, BORDER+faceHeight/2, rightEyeRect.width, rightEyeRect.height);
+//            cout << rightEyeRC.width <<" " << endl;
+//            Mat dstRightEye = displayedFrame(rightEyeRC);
+//            srcBGR.copyTo(dstRightEye);
+        
+
         // Draw an anti-aliased border around the face, even if it is not shown.
         rectangle(displayedFrame, Rect(cx-1, BORDER-1, faceWidth+2, faceHeight+2), CV_RGB(200,200,200), 1, CV_AA);
+        rectangle(displayedFrame, Rect(cx+faceWidth+2+1, BORDER-1, faceWidth/2, faceHeight/2), CV_RGB(200,200,200), 1, CV_AA);
 
         // Draw the GUI buttons into the main image.
         m_rcBtnAdd = drawButton(displayedFrame, "Add Person", Point(BORDER, BORDER));
@@ -578,9 +632,9 @@ void recognizeAndTrainUsingWebcam(VideoCapture &videoCapture, CascadeClassifier 
             Mat face;
             if (faceRect.width > 0) {
                 face = cameraFrame(faceRect);
-                if (searchedLeftEye.width > 0 && searchedRightEye.width > 0) {
-                    Mat topLeftOfFace = face(searchedLeftEye);
-                    Mat topRightOfFace = face(searchedRightEye);
+                if (leftEyeRect.width > 0 && rightEyeRect.width > 0) {
+                    Mat topLeftOfFace = face(leftEyeRect);
+                    Mat topRightOfFace = face(rightEyeRect);
                     imshow("topLeftOfFace", topLeftOfFace);
                     imshow("topRightOfFace", topRightOfFace);
                 }
@@ -611,8 +665,9 @@ int main(int argc, char *argv[])
     CascadeClassifier eyeCascade2;
     VideoCapture videoCapture;
 
-    cout << "WebcamFaceRec, by Shervin Emami (www.shervinemami.info), June 2012." << endl;
-    cout << "Realtime face detection + face recognition from a webcam using LBP and Eigenfaces or Fisherfaces." << endl;
+    cout << "EyeD (RPI)" << endl;
+    cout << "Realtime face detection + recognition from a webcam using LBP and Eigenfaces or Fisherfaces." << endl;
+    cout << "Realtime iris detection + recognition from a webcam using Biometric Lib" << endl;
     cout << "Compiled with OpenCV version " << CV_VERSION << endl << endl;
 
     // Load the face and 1 or 2 eye detection XML classifiers.
